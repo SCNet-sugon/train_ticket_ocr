@@ -10,6 +10,7 @@ Sugon-Scnet 通用 OCR 技能主脚本
 import os
 import sys
 import json
+import time
 import requests
 import mimetypes
 from pathlib import Path
@@ -17,7 +18,11 @@ from pathlib import Path
 # 获取技能根目录（脚本所在目录的上一级）
 SKILL_ROOT = Path(__file__).parent.parent.absolute()
 ENV_FILE = SKILL_ROOT / "config" / ".env"
-
+# --- 新增：重试配置 ---
+MAX_RETRIES = 3            # 最大重试次数
+RETRY_BACKOFF_FACTOR = 2   # 退避因子，每次重试等待时间翻倍
+INITIAL_RETRY_DELAY = 1    # 初始等待时间（秒）
+# --------------------
 def load_config():
     """从 .env 文件加载配置，若文件不存在则抛出友好错误"""
     if not ENV_FILE.exists():
@@ -68,8 +73,11 @@ def load_config():
     config.setdefault('SCNET_API_BASE', 'https://api.scnet.cn/api/llm/v1')
     return config
 
-def recognize(ocr_type, file_path, config):
-    """调用 Scnet OCR API 进行识别"""
+def recognize_with_retry(ocr_type, file_path, config, retry_count=0):
+    """
+    带重试机制的 OCR 识别函数。
+    当遇到 429 (Too Many Requests) 时，自动等待后重试。
+    """
     api_base = config['SCNET_API_BASE']
     api_key = config['SCNET_API_KEY']
     url = f"{api_base}/ocr/recognize"
@@ -99,7 +107,29 @@ def recognize(ocr_type, file_path, config):
             response = requests.post(url, headers=headers, data=data, files=files, timeout=60)
     except Exception as e:
         sys.exit(f"网络请求失败: {str(e)}")
+    # --- 新增：处理 429 速率限制 ---
+    if response.status_code == 429:
+        if retry_count >= MAX_RETRIES:
+            sys.exit(f"错误: 请求被限流 (429)，已达到最大重试次数 {MAX_RETRIES}。请稍后再试。")
 
+        # 尝试从响应中获取重试等待时间（如果有）
+        retry_after = INITIAL_RETRY_DELAY * (RETRY_BACKOFF_FACTOR ** retry_count)
+        try:
+            error_data = response.json()
+            # 某些 API 会在响应中返回 retry_after 字段
+            if 'retry_after' in error_data:
+                retry_after = int(error_data['retry_after'])
+        except:
+            pass
+
+        # 输出友好提示到 stderr（不影响 JSON 输出）
+        sys.stderr.write(
+            f"⚠️ 请求过于频繁，等待 {retry_after} 秒后重试... (第 {retry_count + 1}/{MAX_RETRIES} 次重试)\n")
+        time.sleep(retry_after)
+
+        # 递归重试
+        return recognize_with_retry(ocr_type, file_path, config, retry_count + 1)
+    # ---------------------------------
     if response.status_code != 200:
         # 针对 401/403 给出明确提示
         if response.status_code in (401, 403):
@@ -150,7 +180,8 @@ def main():
     file_path = sys.argv[2]
 
     config = load_config()
-    recognize(ocr_type, file_path, config)
+    # 调用带重试的识别函数
+    recognize_with_retry(ocr_type, file_path, config)
 
 if __name__ == '__main__':
     main()
