@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Sugon-Scnet 通用 OCR 技能主脚本
+Sugon-Scnet 火车票识别 OCR 技能主脚本
 接收命令行参数：ocrType filePath
 输出：识别结果的 JSON
 """
@@ -30,15 +30,18 @@ def load_config():
             "\n===============================================\n"
             "Scnet OCR 配置文件不存在\n"
             "===============================================\n"
-            "请按以下步骤配置：\n\n"
+            "⚠️ 安全警告：切勿在聊天中直接粘贴 API Key！\n\n"
+            "请按以下步骤安全配置：\n\n"
             "1. 申请 Scnet API Token：\n"
             "   访问 https://www.scnet.cn 注册并获取密钥\n\n"
-            "2. 配置 Token：\n"
-            "   告诉 AI：\"帮我配置 Scnet OCR，Token 是：xxx\"\n\n"
-            "   或手动配置：\n"
-            f"   cp {SKILL_ROOT}/config/.env.example {ENV_FILE}\n"
-            f"   nano {ENV_FILE}\n"
-            "   设置 SCNET_API_KEY=你的密钥\n"
+            "2. 配置 Token（选择一种方式）：\n"
+            "   a) 环境变量（推荐）：\n"
+            "      export SCNET_API_KEY='你的密钥'\n"
+            "   b) 配置文件：\n"
+            f"      mkdir -p {SKILL_ROOT}/config\n"
+            f"      echo 'SCNET_API_KEY=你的密钥' > {ENV_FILE}\n"
+            f"      chmod 600 {ENV_FILE}\n"
+            "\n配置完成后重新运行。"
         )
         sys.exit(error_msg)
 
@@ -77,7 +80,7 @@ def recognize_with_retry(ocr_type, file_path, config, retry_count=0):
     """
     带重试机制的 OCR 识别函数。
     当遇到 429 (Too Many Requests) 时，自动等待后重试。
-    """
+    调用 Scnet OCR API 进行识别"""
     api_base = config['SCNET_API_BASE']
     api_key = config['SCNET_API_KEY']
     url = f"{api_base}/ocr/recognize"
@@ -138,10 +141,14 @@ def recognize_with_retry(ocr_type, file_path, config, retry_count=0):
                 "Scnet API Token 无效或已过期\n"
                 "===============================================\n"
                 f"HTTP 状态码: {response.status_code}\n\n"
-                "解决方法：\n"
-                "1. 访问 https://www.scnet.cn 重新申请 Token\n"
-                "2. 告诉 AI：\"我的 Scnet Token 过期了，新的 Token 是：xxx\"\n"
-                f"   或手动更新 {ENV_FILE}\n"
+                "⚠️ 安全警告：请勿在聊天中直接粘贴 API Key！\n\n"
+                "解决方法（二选一）：\n"
+                "1. 环境变量方式：\n"
+                "   export SCNET_API_KEY='你的新Token'\n"
+                "2. 配置文件方式：\n"
+                f"   echo 'SCNET_API_KEY=你的新Token' > {ENV_FILE}\n"
+                f"   chmod 600 {ENV_FILE}\n"
+                "\n更新后重新运行。"
             )
             sys.exit(error_msg)
         else:
@@ -173,7 +180,7 @@ def recognize_with_retry(ocr_type, file_path, config, retry_count=0):
 def main():
     if len(sys.argv) != 3:
         print("用法: python main.py <ocrType> <filePath>")
-        print("ocrType 可选值: GENERAL, ID_CARD, BANK_CARD, BUSINESS_LICENSE, VAT_INVOICE, VAT_ROLL_INVOICE, TAXI_INVOICE, TRAIN_TICKET, AIRPORT_TICKET, VEHICLE_SALE_INVOICE")
+        print("ocrType 可选值: TRAIN_TICKET")
         sys.exit(1)
 
     ocr_type = sys.argv[1]
